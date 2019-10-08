@@ -41,8 +41,6 @@ class LocationsController extends Controller
     {
         // Grab all the locations
         $this->authorize('view', Location::class);
-        $locations = Location::orderBy('created_at', 'DESC')->with('parent', 'assets', 'assignedassets')->get();
-
         // Show the page
         return view('locations/index');
     }
@@ -59,14 +57,7 @@ class LocationsController extends Controller
     public function create()
     {
         $this->authorize('create', Location::class);
-        $locations = Location::orderBy('name', 'ASC')->get();
-
-        $location_options_array = Location::getLocationHierarchy($locations);
-        $location_options = Location::flattenLocationsArray($location_options_array);
-        $location_options = array('' => 'Top Level') + $location_options;
-
         return view('locations/edit')
-            ->with('location_options', $location_options)
             ->with('item', new Location);
     }
 
@@ -101,7 +92,7 @@ class LocationsController extends Controller
             $image = $request->file('image');
             $file_name = str_random(25).".".$image->getClientOriginalExtension();
             $path = public_path('uploads/locations/'.$file_name);
-            Image::make($image->getRealPath())->resize(600, null, function ($constraint) {
+            Image::make($image->getRealPath())->resize(800, null, function ($constraint) {
                 $constraint->aspectRatio();
                 $constraint->upsize();
             })->save($path);
@@ -132,14 +123,8 @@ class LocationsController extends Controller
             return redirect()->route('locations.index')->with('error', trans('admin/locations/message.does_not_exist'));
         }
 
-        // Show the page
-        $locations = Location::orderBy('name', 'ASC')->get();
-        $location_options_array = Location::getLocationHierarchy($locations);
-        $location_options = Location::flattenLocationsArray($location_options_array);
-        $location_options = array('' => 'Top Level') + $location_options;
 
-        return view('locations/edit', compact('item'))
-            ->with('location_options', $location_options);
+        return view('locations/edit', compact('item'));
     }
 
 
@@ -185,7 +170,7 @@ class LocationsController extends Controller
             $file_name = $location->id.'-'.str_slug($image->getClientOriginalName()) . "." . $image->getClientOriginalExtension();
 
             if ($image->getClientOriginalExtension()!='svg') {
-                Image::make($image->getRealPath())->resize(600, null, function ($constraint) {
+                Image::make($image->getRealPath())->resize(800, null, function ($constraint) {
                     $constraint->aspectRatio();
                     $constraint->upsize();
                 })->save(app('locations_upload_path').$file_name);
@@ -229,7 +214,7 @@ class LocationsController extends Controller
         if ($location->users->count() > 0) {
             return redirect()->to(route('locations.index'))->with('error', trans('admin/locations/message.assoc_users'));
 
-        } elseif ($location->childLocations->count() > 0) {
+        } elseif ($location->children->count() > 0) {
             return redirect()->to(route('locations.index'))->with('error', trans('admin/locations/message.assoc_child_loc'));
 
         } elseif ($location->assets->count() > 0) {

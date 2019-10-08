@@ -8,6 +8,8 @@ use App\Helpers\Helper;
 use App\Models\Location;
 use App\Http\Transformers\LocationsTransformer;
 use App\Http\Transformers\SelectlistTransformer;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class LocationsController extends Controller
 {
@@ -26,7 +28,7 @@ class LocationsController extends Controller
                 'updated_at','manager_id','image',
                 'assigned_assets_count','users_count','assets_count','currency'];
 
-        $locations = Location::with('parent', 'manager', 'childLocations')->select([
+        $locations = Location::with('parent', 'manager', 'children')->select([
             'locations.id',
             'locations.name',
             'locations.address',
@@ -41,18 +43,21 @@ class LocationsController extends Controller
             'locations.updated_at',
             'locations.image',
             'locations.currency'
-        ])->withCount('assignedAssets')
-        ->withCount('assets')
-        ->withCount('users');
+        ])->withCount('assignedAssets as assigned_assets_count')
+        ->withCount('assets as assets_count')
+        ->withCount('users as users_count');
 
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $locations = $locations->TextSearch($request->input('search'));
         }
 
 
 
         $offset = (($locations) && (request('offset') > $locations->count())) ? 0 : request('offset', 0);
-        $limit = $request->input('limit', 50);
+
+        // Check to make sure the limit is not higher than the max allowed
+        ((config('app.max_results') >= $request->input('limit')) && ($request->filled('limit'))) ? $limit = $request->input('limit') : $limit = config('app.max_results');
+
         $order = $request->input('order') === 'asc' ? 'asc' : 'desc';
         $sort = in_array($request->input('sort'), $allowed_columns) ? $request->input('sort') : 'created_at';
 
@@ -106,7 +111,7 @@ class LocationsController extends Controller
     public function show($id)
     {
         $this->authorize('view', Location::class);
-        $location = Location::with('parent', 'manager', 'childLocations')
+        $location = Location::with('parent', 'manager', 'children')
             ->select([
                 'locations.id',
                 'locations.name',
@@ -123,9 +128,9 @@ class LocationsController extends Controller
                 'locations.image',
                 'locations.currency'
             ])
-            ->withCount('assignedAssets')
-            ->withCount('assets')
-            ->withCount('users')->findOrFail($id);
+            ->withCount('assignedAssets as assigned_assets_count')
+            ->withCount('assets as assets_count')
+            ->withCount('users as users_count')->findOrFail($id);
         return (new LocationsTransformer)->transformLocation($location);
     }
 
@@ -178,6 +183,27 @@ class LocationsController extends Controller
     /**
      * Gets a paginated collection for the select2 menus
      *
+     * This is handled slightly differently as of ~4.7.8-pre, as
+     * we have to do some recursive magic to get the hierarchy to display
+     * properly when looking at the parent/child relationship in the
+     * rich menus.
+     *
+     * This means we can't use the normal pagination that we use elsewhere
+     * in our selectlists, since we have to get the full set before we can
+     * determine which location is parent/child/grandchild, etc.
+     *
+     * This also means that hierarchy display gets a little funky when people
+     * use the Select2 search functionality, but there's not much we can do about
+     * that right now.
+     *
+     * As a result, instead of paginating as part of the query, we have to grab
+     * the entire data set, and then invoke a paginator manually and pass that
+     * through to the SelectListTransformer.
+     *
+     * Many thanks to @uberbrady for the help getting this working better.
+     * Recursion still sucks, but I guess he doesn't have to get in the
+     * sea... this time.
+     *
      * @author [A. Gianotto] [<snipe@snipe.net>]
      * @since [v4.0.16]
      * @see \App\Http\Transformers\SelectlistTransformer
@@ -189,25 +215,39 @@ class LocationsController extends Controller
         $locations = Location::select([
             'locations.id',
             'locations.name',
+            'locations.parent_id',
             'locations.image',
         ]);
 
-        if ($request->has('search')) {
-            $locations = $locations->where('locations.name', 'LIKE', '%'.$request->get('search').'%');
+        $page = 1;
+        if ($request->filled('page')) {
+            $page = $request->input('page');
         }
 
-        $locations = $locations->orderBy('name', 'ASC')->paginate(50);
+        if ($request->filled('search')) {
+            \Log::debug('Searching... ');
+            $locations = $locations->where('locations.name', 'LIKE', '%'.$request->input('search').'%');
+        }
 
-        // Loop through and set some custom properties for the transformer to use.
-        // This lets us have more flexibility in special cases like assets, where
-        // they may not have a ->name value but we want to display something anyway
+        $locations = $locations->orderBy('name', 'ASC')->get();
+
+        $locations_with_children = [];
         foreach ($locations as $location) {
-            $location->use_text = $location->name;
-            $location->use_image = ($location->image) ? url('/').'/uploads/locations/'.$location->image : null;
+            if(!array_key_exists($location->parent_id, $locations_with_children)) {
+                $locations_with_children[$location->parent_id] = [];
+            }
+            $locations_with_children[$location->parent_id][] = $location;
         }
 
-        return (new SelectlistTransformer)->transformSelectlist($locations);
+        $location_options = Location::indenter($locations_with_children);
+
+        $locations_formatted = new Collection($location_options);
+        $paginated_results =  new LengthAwarePaginator($locations_formatted->forPage($page, 500), $locations_formatted->count(), 500, $page, []);
+
+        //return [];
+        return (new SelectlistTransformer)->transformSelectlist($paginated_results);
 
     }
+
 
 }

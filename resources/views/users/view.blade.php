@@ -193,6 +193,13 @@
                   </tr>
                   @endif
 
+                  @if ($user->website)
+                    <tr>
+                      <td class="text-nowrap">{{ trans('general.website') }}</td>
+                      <td><a href="{{ $user->website }}" target="_blank">{{ $user->website }}</a></td>
+                    </tr>
+                  @endif
+
                   @if ($user->phone)
                   <tr>
                     <td class="text-nowrap">{{ trans('admin/users/table.phone') }}</td>
@@ -333,10 +340,11 @@
                 </tr>
               </thead>
               <tbody>
+              @if ($user->assets)
                 @foreach ($user->assets as $asset)
                 <tr>
                   <td>
-                    @if ($asset->physical=='1')
+                    @if (($asset->model) && ($asset->physical=='1'))
                       <a href="{{ route('models.show', $asset->model->id) }}">{{ $asset->model->name }}</a>
                     @endif
                   </td>
@@ -353,6 +361,7 @@
                   </td>
                 </tr>
                 @endforeach
+                @endif
               </tbody>
             </table>
           </div>
@@ -375,7 +384,11 @@
                     {!! $license->present()->nameUrl() !!}
                   </td>
                   <td>
+                    @can('viewKeys', $license)
                     {!! $license->present()->serialUrl() !!}
+                    @else
+                      ------------
+                    @endcan
                   </td>
                   <td class="hidden-print">
                     @can('update', $license)

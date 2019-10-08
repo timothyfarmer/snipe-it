@@ -7541,7 +7541,7 @@ var pieOptions = {
 //- END PIE CHART -
 //-----------------
 
-
+var baseUrl = $('meta[name="baseUrl"]').attr('content');
 
 (function($, settings) {
     var Components = {};
@@ -7598,7 +7598,6 @@ $(document).ready(function () {
     * Slideout help menu
     */
      $('.slideout-menu-toggle').on('click', function(event){
-       console.log('clicked');
         event.preventDefault();
         // create menu variables
         var slideoutMenu = $('.slideout-menu');
@@ -8040,5 +8039,8 @@ function formatDatalist (datalist) {
 }
 
 function formatDataSelection (datalist) {
-    return datalist.text;
+    return datalist.text.replace(/>/g, '&gt;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
