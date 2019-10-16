@@ -2,9 +2,8 @@
 
 use App\Helpers\Helper;
 use App\Http\Transformers\UsersTransformer;
-use App\Models\Group;
-use App\Models\Setting;
 use App\Models\User;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
 
 class ApiUsersCest
@@ -32,7 +31,7 @@ class ApiUsersCest
         $response = json_decode($I->grabResponse(), true);
         // sample verify
         $user = App\Models\User::orderByDesc('created_at')
-            ->withCount('assets as assets_count', 'licenses as licenses_count', 'accessories as accessories_count', 'consumables as consumables_count')
+            ->withCount('assets', 'licenses', 'accessories', 'consumables')
             ->take(10)->get()->shuffle()->first();
         $I->seeResponseContainsJson($I->removeTimestamps((new UsersTransformer)->transformUser($user)));
     }
@@ -45,8 +44,7 @@ class ApiUsersCest
         $temp_user = factory(\App\Models\User::class)->make([
             'name' => "Test User Name",
         ]);
-        factory(Group::class, 2)->create();
-        $groups = Group::pluck('id');
+
         // setup
         $data = [
             'activated' => $temp_user->activated,
@@ -69,14 +67,11 @@ class ApiUsersCest
             'state' => $temp_user->state,
             'username' => $temp_user->username,
             'zip' => $temp_user->zip,
-            'groups' => $groups
         ];
 
         // create
         $I->sendPOST('/users', $data);
         $I->seeResponseIsJson();
-        $user = User::where('username', $temp_user->username)->first();
-        $I->assertEquals($groups, $user->groups()->pluck('id'));
         $I->seeResponseCodeIs(200);
     }
 
@@ -101,9 +96,6 @@ class ApiUsersCest
             'location_id' => 1,
         ]);
 
-        factory(Group::class, 2)->create();
-        $groups = Group::pluck('id');
-
         $data = [
             'activated' => $temp_user->activated,
             'address' => $temp_user->address,
@@ -114,7 +106,6 @@ class ApiUsersCest
             'email' => $temp_user->email,
             'employee_num' => $temp_user->employee_num,
             'first_name' => $temp_user->first_name,
-            'groups' => $groups,
             'jobtitle' => $temp_user->jobtitle,
             'last_name' => $temp_user->last_name,
             'locale' => $temp_user->locale,
@@ -143,8 +134,6 @@ class ApiUsersCest
         $I->assertEquals($temp_user->company_id, $response->payload->company->id); // company_id updated
         $I->assertEquals($temp_user->first_name, $response->payload->first_name); // user name updated
         $I->assertEquals($temp_user->location_id, $response->payload->location->id); // user location_id updated
-        $newUser = User::where('username', $temp_user->username)->first();
-        $I->assertEquals($groups, $newUser->groups()->pluck('id'));
         $temp_user->created_at = Carbon::parse($response->payload->created_at->datetime);
         $temp_user->updated_at = Carbon::parse($response->payload->updated_at->datetime);
         $temp_user->id = $user->id;
